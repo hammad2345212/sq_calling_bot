@@ -1,10 +1,10 @@
 const twilio = require("twilio");
-const { askChatGPT } = require("./openaiService");
+const { askVoiceGPT } = require("./openaiService");
 
 async function handleVoice(req, res) {
   const twiml = new twilio.twiml.VoiceResponse();
   twiml.say(
-    "Hello! Welcome to our restaurant. Please tell me what you would like to order."
+    "Hello! Welcome to our restaurant. Please tell me what you'd like to order after the beep."
   );
   twiml.record({
     transcribe: true,
@@ -21,17 +21,17 @@ async function handleTranscription(req, res) {
   const twiml = new twilio.twiml.VoiceResponse();
 
   if (!userText) {
-    twiml.say("Sorry, I did not catch that. Please try again.");
+    twiml.say("Sorry, I didn't catch that. Please try again.");
     res.type("text/xml");
     return res.send(twiml.toString());
   }
 
   try {
-    const reply = await askChatGPT(userText);
+    const reply = await askVoiceGPT(userText);
     twiml.say(reply);
   } catch (err) {
-    console.error(err);
-    twiml.say("Sorry, something went wrong.");
+    console.error("Voice GPT error:", err.message);
+    twiml.say("Sorry, something went wrong while processing your order.");
   }
 
   res.type("text/xml");
