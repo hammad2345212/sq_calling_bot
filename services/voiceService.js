@@ -1,23 +1,18 @@
 const twilio = require("twilio");
 const { askVoiceGPT } = require("./openaiService");
 
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
-
 async function handleVoice(req, res) {
   const vr = new twilio.twiml.VoiceResponse();
 
   vr.say(
-    "Hello! Welcome to Chef Chen restaurant. Please tell me what you'd like to order after the beep."
+    "Hello! Welcome to Chef Chen restaurant. What would you like to order?"
   );
-  vr.record({
-    transcribe: true,
-    transcribeCallback: "/handle-transcribe",
-    maxLength: 30,
-    playBeep: true,
+  vr.gather({
+    input: "speech",
+    action: "/handle-speech",
+    method: "POST",
     timeout: 5,
+    speechTimeout: "auto",
   });
 
   vr.say("We didn't receive any input. Goodbye!");
@@ -26,36 +21,42 @@ async function handleVoice(req, res) {
   res.type("text/xml").send(vr.toString());
 }
 
-async function handleTranscribe(req, res) {
-  const { TranscriptionText, CallSid } = req.body;
+async function handleSpeech(req, res) {
+  const { SpeechResult } = req.body;
+  const vr = new twilio.twiml.VoiceResponse();
 
-  if (!TranscriptionText) {
-    console.error("Missing transcription.");
-    return res.sendStatus(400);
+  if (!SpeechResult) {
+    console.error("No speech recognized.");
+    vr.say("Sorry, I didn't catch that. Goodbye!");
+    vr.hangup();
+    return res.type("text/xml").send(vr.toString());
   }
 
-  console.log("User said:", TranscriptionText);
+  console.log("User said:", SpeechResult);
 
   try {
-    const gptReply = await askVoiceGPT(TranscriptionText);
+    const gptReply = await askVoiceGPT(SpeechResult);
 
-    await client.calls(CallSid).update({
-      twiml: `<Response>
-        <Say>${gptReply}</Say>
-        <Pause length="1"/>
-        <Say>Would you like to order anything else?</Say>
-        <Gather input="speech" timeout="5" action="/handle-loop" method="POST">
-          <Say>Please say yes or no.</Say>
-        </Gather>
-        <Say>We didn't hear anything. Goodbye!</Say>
-        <Hangup/>
-      </Response>`,
+    vr.say(gptReply);
+    vr.pause({ length: 1 });
+    vr.say("Would you like to order anything else?");
+    vr.gather({
+      input: "speech",
+      action: "/handle-loop",
+      method: "POST",
+      timeout: 5,
+      speechTimeout: "auto",
     });
 
-    res.sendStatus(200);
+    vr.say("We didn't hear anything. Goodbye!");
+    vr.hangup();
+
+    res.type("text/xml").send(vr.toString());
   } catch (err) {
     console.error("Error during GPT response:", err);
-    res.sendStatus(500);
+    vr.say("Sorry, something went wrong processing your order.");
+    vr.hangup();
+    res.type("text/xml").send(vr.toString());
   }
 }
 
@@ -80,6 +81,6 @@ function handleLoop(req, res) {
 
 module.exports = {
   handleVoice,
-  handleTranscribe,
+  handleSpeech,
   handleLoop,
 };
