@@ -1,5 +1,6 @@
 const twilio = require("twilio");
 const { askVoiceGPT } = require("./openaiService");
+const { transcribeRecording } = require("./transcriptionService");
 
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
@@ -12,9 +13,10 @@ async function handleVoice(req, res) {
   vr.say(
     "Hello! Welcome to Chef Chen restaurant. Please tell me what you'd like to order after the beep."
   );
+
   vr.record({
-    transcribe: true,
-    transcribeCallback: "/handle-transcribe",
+    action: "/handle-transcribe",
+    method: "POST",
     maxLength: 30,
     playBeep: true,
     timeout: 5,
@@ -27,17 +29,20 @@ async function handleVoice(req, res) {
 }
 
 async function handleTranscribe(req, res) {
-  const { TranscriptionText, CallSid } = req.body;
+  const { RecordingUrl, CallSid } = req.body;
+  console.log("Transcribing recording for CallSid:", CallSid);
+  console.log("Recording URL:", RecordingUrl);
 
-  if (!TranscriptionText) {
-    console.error("Missing transcription.");
+  if (!RecordingUrl) {
+    console.error("Recording URL missing.");
     return res.sendStatus(400);
   }
 
-  console.log("User said:", TranscriptionText);
-
   try {
-    const gptReply = await askVoiceGPT(TranscriptionText);
+    const transcription = await transcribeRecording(`${RecordingUrl}.mp3`);
+    console.log("Transcription:", transcription);
+
+    const gptReply = await askVoiceGPT(transcription);
 
     await client.calls(CallSid).update({
       twiml: `<Response>
@@ -54,7 +59,7 @@ async function handleTranscribe(req, res) {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("Error during GPT response:", err);
+    console.error("Error during transcription or GPT:", err);
     res.sendStatus(500);
   }
 }
