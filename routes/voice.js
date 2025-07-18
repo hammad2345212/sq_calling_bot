@@ -1,11 +1,9 @@
 const express = require("express");
+const { handleVoice, handleRecord, handleTranscribe } = require("../services/voiceService");
 const router = express.Router();
-const {
-  handleVoice,
-  handleTranscription,
-} = require("../services/voiceService");
 
 router.post("/voice", handleVoice);
-router.post("/transcribe", handleTranscription);
+router.post("/handle-record", handleRecord);
+router.post("/handle-transcribe", handleTranscribe);
 
 module.exports = router;
