@@ -1,6 +1,6 @@
 const twilio = require("twilio");
 const { askVoiceGPT } = require("./openaiService");
-const { setCallState, getCallState, clearCall } = require("./sessionStore");
+const { getCallState, setCallState, clearCall } = require("../utils/sessionStore");
 
 async function handleVoice(req, res) {
   const vr = new twilio.twiml.VoiceResponse();
