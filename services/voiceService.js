@@ -1,76 +1,85 @@
 const twilio = require("twilio");
 const { askVoiceGPT } = require("./openaiService");
 
-// /voice route – starts the call and records/transcribes the message
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+
 async function handleVoice(req, res) {
-  const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say(
+  const vr = new twilio.twiml.VoiceResponse();
+
+  vr.say(
     "Hello! Welcome to Chef Chen restaurant. Please tell me what you'd like to order after the beep."
   );
-  twiml.record({
-    action: "/handle-record",
-    method: "POST",
-    maxLength: 30,
-    playBeep: true,
+  vr.record({
     transcribe: true,
     transcribeCallback: "/handle-transcribe",
+    maxLength: 30,
+    playBeep: true,
+    timeout: 5,
   });
-  twiml.say("Thank you. Goodbye.");
-  twiml.hangup();
 
-  res.type("text/xml");
-  res.send(twiml.toString());
+  vr.say("We didn't receive any input. Goodbye!");
+  vr.hangup();
+
+  res.type("text/xml").send(vr.toString());
 }
 
-// /handle-record route – called immediately after recording ends
-function handleRecord(req, res) {
-  const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say("Thanks — please hold while we process your order.");
-  twiml.pause({ length: 10 });
-  twiml.say("Still processing, one moment please.");
-  twiml.pause({ length: 10 });
-  twiml.say("Goodbye!");
-  twiml.hangup();
-
-  res.type("text/xml");
-  res.send(twiml.toString());
-}
-
-// /handle-transcribe route – async callback with transcriptionText
 async function handleTranscribe(req, res) {
   const { TranscriptionText, CallSid } = req.body;
-  console.log("TranscriptionText:", TranscriptionText);
 
   if (!TranscriptionText) {
-    console.error("No transcription available in callback");
+    console.error("Missing transcription.");
     return res.sendStatus(400);
   }
 
-  try {
-    const reply = await askVoiceGPT(TranscriptionText);
+  console.log("User said:", TranscriptionText);
 
-    const client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
+  try {
+    const gptReply = await askVoiceGPT(TranscriptionText);
+
     await client.calls(CallSid).update({
       twiml: `<Response>
-                <Say>${reply}</Say>
-                <Pause length="1"/>
-                <Say>Would you like to order anything else?</Say>
-                <Redirect method="POST">/voice</Redirect>
-              </Response>`,
+        <Say>${gptReply}</Say>
+        <Pause length="1"/>
+        <Say>Would you like to order anything else?</Say>
+        <Gather input="speech" timeout="5" action="/handle-loop" method="POST">
+          <Say>Please say yes or no.</Say>
+        </Gather>
+        <Say>We didn't hear anything. Goodbye!</Say>
+        <Hangup/>
+      </Response>`,
     });
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("Error replying via GPT:", err);
+    console.error("Error during GPT response:", err);
     res.sendStatus(500);
   }
 }
 
+function handleLoop(req, res) {
+  const userSpeech = req.body.SpeechResult?.trim().toLowerCase();
+  const vr = new twilio.twiml.VoiceResponse();
+
+  if (
+    userSpeech &&
+    (userSpeech.includes("yes") ||
+      userSpeech.includes("sure") ||
+      userSpeech.includes("okay"))
+  ) {
+    vr.redirect({ method: "POST" }, "/voice");
+  } else {
+    vr.say("Thank you for your order. Have a great day!");
+    vr.hangup();
+  }
+
+  res.type("text/xml").send(vr.toString());
+}
+
 module.exports = {
   handleVoice,
-  handleRecord,
   handleTranscribe,
+  handleLoop,
 };
