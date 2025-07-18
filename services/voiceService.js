@@ -35,21 +35,28 @@ async function handleSpeech(req, res) {
   console.log("User said:", SpeechResult);
 
   try {
-    const gptReply = await askVoiceGPT(SpeechResult);
+    const { reply, intent } = await askVoiceGPT(SpeechResult);
 
-    vr.say(gptReply);
+    vr.say(reply);
     vr.pause({ length: 1 });
-    vr.say("Would you like to order anything else?");
-    vr.gather({
-      input: "speech",
-      action: "/handle-loop",
-      method: "POST",
-      timeout: 5,
-      speechTimeout: "auto",
-    });
 
-    vr.say("We didn't hear anything. Goodbye!");
-    vr.hangup();
+    if (intent === "order") {
+      vr.say("Would you like to order anything else?");
+      vr.gather({
+        input: "speech",
+        action: "/handle-loop",
+        method: "POST",
+        timeout: 5,
+        speechTimeout: "auto",
+      });
+
+      vr.say("We didn't hear anything. Goodbye!");
+      vr.hangup();
+    } else {
+      // user asked about the menu or something else
+      vr.say("When you're ready, please tell me what you'd like to order.");
+      vr.redirect({ method: "POST" }, "/voice");
+    }
 
     res.type("text/xml").send(vr.toString());
   } catch (err) {

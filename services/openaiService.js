@@ -130,14 +130,34 @@ Keep the response short and natural for voice.
 
   const gptReply = res.data.choices[0].message.content.trim();
 
+  // Determine intent
+  let intent = "other";
+  const lowerMsg = message.toLowerCase();
+
+  if (
+    lowerMsg.includes("menu") ||
+    lowerMsg.includes("what do you have") ||
+    lowerMsg.includes("available") ||
+    lowerMsg.includes("options") ||
+    lowerMsg.includes("show me") ||
+    gptReply.toLowerCase().includes("we have")
+  ) {
+    intent = "menu";
+  } else if (orderedItems.length > 0) {
+    intent = "order";
+  }
+
   const summary =
-    orderedItems.length > 0
+    intent === "order"
       ? ` You've ordered: ${orderedItems
           .map((i) => `${i.name} for $${i.price.toFixed(2)}`)
           .join(", ")}. Total is $${total.toFixed(2)}.`
-      : " You have not selected any available items from the menu.";
+      : "";
 
-  return gptReply + summary;
+  return {
+    reply: gptReply + summary,
+    intent,
+  };
 }
 
 module.exports = {
